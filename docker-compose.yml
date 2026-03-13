@@ -1,0 +1,91 @@
+version: "3.8"
+services:
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: clothes_phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql          # connects to your mysql container
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: rootpassword
+    depends_on:
+      mysql:
+        condition: service_healthy
+  
+  mysql:
+    image: mysql:8.0
+    container_name: clothes_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: clothes_rental
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  
+  auth-service:
+    build: 
+      context: .
+      dockerfile: Dockerfile.Auth
+    container_name: clothes_auth
+    restart: always
+    ports:
+      - "5001:5001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    
+
+  catalog-service:
+    build: 
+      context: .
+      dockerfile: Dockerfile.Catalog
+    ports:
+      - "5002:5002"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  rental-service:
+    build: 
+      context: .
+      dockerfile: Dockerfile.Rental
+    ports:
+      - "5003:5003"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started   # rental calls auth to verify tokens
+
+  admin-service:
+    build: 
+      context: .
+      dockerfile: Dockerfile.Admin
+    ports:
+      - "5004:5004"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started   # admin calls auth to verify tokens
+  
+  frontend:
+    build: 
+      context: .
+      dockerfile: Dockerfile.Frontend
+    ports:
+      - "8080:80"             # visit http://localhost:8080
+
+volumes:
+  mysql_data:
